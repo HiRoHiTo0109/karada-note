@@ -182,7 +182,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ok);outline-off
 <div class="toast" id="toast" hidden><span id="toastMsg"></span><button id="toastUndo">取り消す</button></div>
 
 <script>
-const KEY='karada-note-v1', DAY=864e5, GOAL_LOSS=5, WIN_H=10, CARDIO_GOAL=150, STR_GOAL=3;
+const KEY='karada-note-v1', DAY=864e5, WIN_H=10, CARDIO_GOAL=150, STR_GOAL=3;
 const $=id=>document.getElementById(id);
 const pad=n=>String(n).padStart(2,'0');
 const dkey=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
@@ -190,14 +190,15 @@ const hm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
 const fmt=n=>Math.round(n).toLocaleString('ja-JP');
 
 let S=load();
-function blank(){return{startWeight:null,startDate:null,weights:[],meals:[],workouts:[]}}
+function blank(){return{startWeight:null,startDate:null,goalLoss:5,weights:[],meals:[],workouts:[]}}
 function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&Array.isArray(v.weights))return v;}catch(e){}return blank()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('保存できませんでした')}}
 
 /* 計算 */
 const todayKey=()=>dkey(new Date());
 function curWeight(){const w=[...S.weights].sort((a,b)=>a.date<b.date?-1:1);return w.length?w[w.length-1].kg:S.startWeight}
-const goalWeight=()=>Math.round((S.startWeight-GOAL_LOSS)*10)/10;
+const goalLoss=()=>S.goalLoss||5;
+const goalWeight=()=>Math.round((S.startWeight-goalLoss())*10)/10;
 const kcalTarget=()=>Math.round(curWeight()*35*0.75);
 const protTarget=()=>Math.round(curWeight()*2.2);
 const todayMeals=()=>S.meals.filter(m=>dkey(new Date(m.ts))===todayKey()).sort((a,b)=>a.ts-b.ts);
@@ -265,7 +266,7 @@ function renderMeters(){
 }
 
 function renderWeight(){
-  const cur=curWeight(),goal=goalWeight(),lost=S.startWeight-cur,pct=Math.max(0,Math.min(lost/GOAL_LOSS*100,100));
+  const cur=curWeight(),goal=goalWeight(),lost=S.startWeight-cur,pct=Math.max(0,Math.min(lost/goalLoss()*100,100));
   const togo=Math.max(cur-goal,0);
   let h='<div class="wrow"><span class="num">'+cur.toFixed(1)+'</span><span class="unit">kg</span>'+
     '<span class="togo '+(togo===0?'ok-t':'')+'">'+(togo===0?'目標達成！':'目標 '+goal.toFixed(1)+'kg まで あと '+togo.toFixed(1)+'kg')+'</span></div>'+
@@ -389,8 +390,10 @@ $('gear').onclick=()=>choice({step:'',title:'設定',note:'データはこのス
   {label:'📂 バックアップから戻す',sub:'保存したファイルを選ぶ',pick:()=>{const i=document.createElement('input');i.type='file';i.accept='.json';
     i.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const v=JSON.parse(r.result);if(!Array.isArray(v.weights))throw 0;
       closeSheet();commit('バックアップを戻しました',()=>{S=v})}catch(e){toast('このファイルは読み込めません')}};r.readAsText(i.files[0])};i.click()}},
-  {label:'🎯 開始体重を変える',sub:'今は '+(S.startWeight||0).toFixed(1)+'kg → 目標 '+goalWeight().toFixed(1)+'kg',pick:()=>keypad({step:'',title:'開始体重は？',note:'目標はここから −5kg になります',unit:'kg',decimal:true,min:20,max:300,initial:String(S.startWeight),
+  {label:'🎯 開始体重を変える',sub:'今は '+(S.startWeight||0).toFixed(1)+'kg → 目標 '+goalWeight().toFixed(1)+'kg',pick:()=>keypad({step:'',title:'開始体重は？',note:'目標はここから −'+goalLoss()+'kg になります',unit:'kg',decimal:true,min:20,max:300,initial:String(S.startWeight),
     done:kg=>{closeSheet();commit('開始体重を変えました',()=>{S.startWeight=Math.round(kg*10)/10})}})},
+  {label:'🏁 目標を変える',sub:'今は −'+goalLoss()+'kg（'+goalWeight().toFixed(1)+'kg）',pick:()=>keypad({step:'',title:'何kg減らしますか？',note:'開始体重 '+S.startWeight.toFixed(1)+'kg から減らす量です',unit:'kg',decimal:true,min:0.5,max:30,initial:String(goalLoss()),okLabel:'変更する',
+    done:kg=>{closeSheet();commit('目標を −'+(Math.round(kg*10)/10)+'kg に変えました',()=>{S.goalLoss=Math.round(kg*10)/10})}})},
   {label:'🗑 すべて消す',sub:'最初からやり直す',danger:true,pick:()=>choice({step:'',title:'本当にすべて消しますか？',note:'消すと元に戻せません。先にバックアップがおすすめです',warn:true,
     choices:[{label:'消す',danger:true,pick:()=>{S=blank();save();closeSheet();setup()}},{label:'やめる',pick:closeSheet}]})}
 ]});
@@ -402,7 +405,7 @@ function toast(msg,undo){$('toastMsg').textContent=msg;$('toastUndo').hidden=!un
 
 /* 初回 */
 function setup(){
-  keypad({step:'はじめに',title:'今の体重を入れてください',note:'ここから −5kg を目標にします。カロリーやタンパク質の目安も自動で計算します',
+  keypad({step:'はじめに',title:'今の体重を入れてください',note:'まずは −5kg を目標にします（あとで⚙️設定から変えられます）。カロリーやタンパク質の目安も自動で計算します',
     unit:'kg',decimal:true,min:20,max:300,okLabel:'はじめる',
     done:kg=>{kg=Math.round(kg*10)/10;S.startWeight=kg;S.startDate=todayKey();S.weights=[{date:todayKey(),kg}];save();closeSheet();render();
       toast('目標は '+goalWeight().toFixed(1)+'kg です')}});
