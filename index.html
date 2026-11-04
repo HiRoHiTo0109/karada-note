@@ -72,6 +72,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ok);outline-off
 .meal .t{color:var(--sub);width:3.2em;flex:none}
 .meal .v{flex:1}
 .meal button{width:36px;height:36px;border-radius:50%;color:var(--sub);flex:none}
+.meal button.reg{width:auto;padding:0 12px;border-radius:12px;background:var(--okSoft);color:var(--ok);font-weight:800;font-size:.85rem}
 .empty{color:var(--sub);font-size:.9rem}
 
 .wrow{display:flex;align-items:baseline;gap:8px}
@@ -284,8 +285,14 @@ function renderMeters(){
     '<div class="meter"><div class="label">タンパク質（以上）</div><div class="num">'+f1(p)+'<small> g</small></div>'+tierBar(p,t.protStd,t.protHard,false)+
       '<div class="msg">'+pm+'</div><div class="msg sub-t">標準'+f1(t.protStd)+'／ハード'+f1(t.protHard)+'</div></div>';
   $('meals').innerHTML=m.length?m.map(x=>'<div class="meal"><span class="t">'+hm(new Date(x.ts))+'</span><span class="v">'+
-    (x.name?esc(x.name)+'　':'')+fmt(x.kcal)+'kcal・'+f1(x.protein)+'g</span><button aria-label="この記録を消す" data-del="'+x.ts+'">✕</button></div>').join('')
+    (x.name?esc(x.name)+'　':'')+fmt(x.kcal)+'kcal・'+f1(x.protein)+'g</span>'+
+    (S.foods.some(f=>f.name===x.name)?'':'<button class="reg" data-reg="'+x.ts+'">＋登録</button>')+
+    '<button aria-label="この記録を消す" data-del="'+x.ts+'">✕</button></div>').join('')
     :'<p class="empty">まだ記録がありません</p>';
+  $('meals').querySelectorAll('[data-reg]').forEach(b=>b.onclick=()=>{const m=S.meals.find(x=>x.ts===+b.dataset.reg);if(!m)return;
+    textStep({step:'',title:'名前をつけて登録',note:fmt(m.kcal)+'kcal・'+f1(m.protein)+'g を、次から選べるようにします',placeholder:'例：コンビニおにぎり 鮭',initial:m.name||'',
+      done:name=>{closeSheet();commit(name+'を登録しました',()=>{const t=S.meals.find(x=>x.ts===m.ts);if(t)t.name=name;
+        S.foods.push({id:'f'+Date.now(),name,kcal:m.kcal,protein:m.protein,uses:1})})}})});
   $('meals').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const ts=+b.dataset.del;
     commit('食事の記録を消しました',()=>{S.meals=S.meals.filter(x=>x.ts!==ts)})});
 }
@@ -439,7 +446,7 @@ function askSex(next){
 /* ===== 食べ物の管理 ===== */
 function manageFoods(){
   const body=openSheet('');
-  body.innerHTML='<p class="q">登録した食べ物</p><p class="note">✕ で削除できます。今日までの記録は消えません</p><div class="list" id="lst"></div>';
+  body.innerHTML='<p class="q">登録した食べ物</p><p class="note">✕ で削除できます。今日までの記録は消えません。数字だけで入れた食事は、ホーム画面の「＋登録」から登録できます</p><div class="list" id="lst"></div>';
   if(!S.foods.length)$('lst').innerHTML='<p class="empty">登録はありません</p>';
   S.foods.forEach(f=>{const r=document.createElement('div');r.className='row';
     r.innerHTML='<span class="v"><b>'+esc(f.name)+'</b><br><small>'+fmt(f.kcal)+'kcal・'+f1(f.protein)+'g</small></span><button aria-label="削除">✕</button>';
