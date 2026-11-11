@@ -161,6 +161,7 @@ button.day{width:100%;font:inherit;color:inherit}
 .row small{color:var(--sub)}
 .row button{width:40px;height:40px;border-radius:50%;background:var(--bg);color:var(--over);font-weight:800;flex:none}
 
+.pv{background:var(--okSoft);border-radius:14px;padding:10px 14px;margin-top:10px;font-weight:800;text-align:center;font-size:1.1rem}
 .tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin:4px 0 10px}
 .tab{flex:none;padding:8px 14px;border-radius:999px;background:var(--card);border:2px solid var(--line);font-weight:700}
 .tab.on{background:var(--btn);color:var(--btnInk);border-color:var(--btn)}
@@ -226,14 +227,14 @@ const r1=n=>Math.round(n*10)/10;
 const f1=n=>r1(n).toFixed(1);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const DEFAULT_FOODS=[['おにぎり',180,4],['ゆで卵',80,6.2],['納豆',90,8.3],['サラダチキン',110,24],['プロテイン',120,20],
-  ['鶏むね100g',120,23],['ギリシャヨーグルト',90,10],['ごはん150g',234,3.8],['牛乳200ml',134,6.6],['無糖コーヒー',5,0.4]];
+const DEFAULT_FOODS=[['おにぎり',180,4,'piece',1],['ゆで卵',80,6.2,'piece',1],['納豆',90,8.3,'piece',1],['サラダチキン',110,24,'piece',1],['プロテイン',120,20],
+  ['鶏むね肉',120,23,'g',100],['ギリシャヨーグルト',90,10,'piece',1],['ごはん',156,2.5,'g',100],['牛乳',61,3.3,'ml',100],['無糖コーヒー',5,0.4]];
 
 let S=load();
 function blank(){return{startWeight:null,startDate:null,goalLoss:5,sex:null,weights:[],meals:[],workouts:[],foods:null,commuteMin:null}}
 function load(){let v=null;try{v=JSON.parse(localStorage.getItem(KEY))}catch(e){}
   if(!v||!Array.isArray(v.weights))v=blank();
-  if(!Array.isArray(v.foods))v.foods=DEFAULT_FOODS.map((f,i)=>({id:'d'+i,name:f[0],kcal:f[1],protein:f[2],uses:0}));
+  if(!Array.isArray(v.foods))v.foods=DEFAULT_FOODS.map((f,i)=>({id:'d'+i,name:f[0],kcal:f[1],protein:f[2],unit:f[3]||'serving',base:f[4]||1,uses:0}));
   if(!v.goalLoss)v.goalLoss=5;return v}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('保存できませんでした')}}
 
@@ -396,8 +397,8 @@ function shake(el){el.classList.remove('err');void el.offsetWidth;el.classList.a
 function keypad(o){
   const body=openSheet(o.step);let v=o.initial!=null?String(o.initial):'';
   body.innerHTML='<p class="q">'+o.title+'</p>'+(o.note?'<p class="note">'+o.note+'</p>':'')+(o.presets?'<div class="chips" id="chips"></div>':'')+
-    '<div class="display" id="disp"><span id="dv"></span><span class="u">'+o.unit+'</span></div><p class="err-msg" id="em"></p><div class="keys" id="keys"></div>';
-  const show=()=>{$('dv').textContent=v||'0';$('dv').style.color=v?'':'var(--sub)'};
+    '<div class="display" id="disp"><span id="dv"></span><span class="u">'+o.unit+'</span></div>'+(o.preview?'<div class="pv" id="pv"></div>':'')+'<p class="err-msg" id="em"></p><div class="keys" id="keys"></div>';
+  const show=()=>{$('dv').textContent=v||'0';$('dv').style.color=v?'':'var(--sub)';if(o.preview)$('pv').innerHTML=o.preview(parseFloat(v||'0')||0)};
   (o.presets||[]).forEach(p=>{const b=document.createElement('button');b.className='chip';
     b.innerHTML='<b>'+p.label+'</b>'+(p.sub?'<small>'+p.sub+'</small>':'');b.onclick=()=>p.pick(x=>{v=String(x);show()});$('chips').appendChild(b)});
   ['1','2','3','4','5','6','7','8','9',o.decimal?'.':'','0','⌫'].forEach(k=>{
@@ -438,15 +439,19 @@ function flowMeal(){
     (foods.length?'<p class="note">登録した食べ物・飲み物（よく使う順）。押すとすぐ記録されます</p><div class="foods" id="fl"></div>':'<p class="note">まだ登録がありません</p>')+
     '<div class="subbtns"><button class="subbtn" id="fDish" style="border-style:solid;border-color:var(--ok)">📖 料理の目安から選ぶ</button><button class="subbtn" id="fNew">＋ 新しく登録して記録</button><button class="subbtn" id="fNum">🔢 数字だけ入力（登録しない）</button></div>';
   foods.forEach(f=>{const b=document.createElement('button');b.className='food';
-    b.innerHTML='<b>'+esc(f.name)+'</b><small>'+fmt(f.kcal)+'kcal・'+f1(f.protein)+'g</small>';
-    b.onclick=()=>{const ts=tsFrom($('mt').value);closeSheet();
+    b.innerHTML='<b>'+esc(f.name)+'</b><small>'+perText(f)+fmt(f.kcal)+'kcal・'+f1(f.protein)+'g</small>';
+    b.onclick=()=>{const ts=tsFrom($('mt').value);if(fu(f)!=='serving')return qtyStep(f,ts,false);closeSheet();
       commit(f.name+'を記録しました',()=>{S.meals.push({ts,kcal:f.kcal,protein:f.protein,name:f.name});const t=S.foods.find(x=>x.id===f.id);if(t)t.uses=(t.uses||0)+1})};
     $('fl').appendChild(b)});
   $('fDish').onclick=()=>flowDish(tsFrom($('mt').value));
   $('fNew').onclick=()=>{const ts=tsFrom($('mt').value);
-    textStep({step:'1 / 3',title:'名前は？',note:'次から同じものをボタン1つで選べます',placeholder:'例：コンビニおにぎり 鮭',
-      done:name=>numSteps(['2 / 3','3 / 3'],(k,p)=>{closeSheet();commit(name+'を登録・記録しました',()=>{
-        S.foods.push({id:'f'+Date.now(),name,kcal:k,protein:p,uses:1});S.meals.push({ts,kcal:k,protein:p,name})})},'登録して記録')})};
+    textStep({step:'',title:'名前は？',note:'次から同じものをボタン1つで選べます',placeholder:'例：コンビニおにぎり 鮭',
+      done:name=>chooseBasis('表示はどう書いてありますか？',(unit,base)=>{
+        const lbl=unit==='serving'?'':(unit==='piece'?'1個あたりの':base+unit+'あたりの');
+        numSteps(['',''],(k,p)=>{const f={id:'f'+Date.now(),name,kcal:k,protein:p,unit,base};
+          if(unit!=='serving')return qtyStep(f,ts,true);
+          closeSheet();commit(name+'を登録・記録しました',()=>{S.foods.push(Object.assign(f,{uses:1}));S.meals.push({ts,kcal:k,protein:p,name})})},
+          unit==='serving'?'登録して記録':'次へ',{lbl})})})};
   $('fNum').onclick=()=>{const ts=tsFrom($('mt').value);
     numSteps(['1 / 2','2 / 2'],(k,p)=>{closeSheet();commit('食事を記録しました',()=>S.meals.push({ts,kcal:k,protein:p}))},'記録する')};
 }
@@ -505,10 +510,40 @@ function confirmDish(d,ts){
   $('cFix').onclick=()=>{const c=cur();numSteps(['1 / 2','2 / 2'],(k,p)=>saveIt(c.nm,k,p,true),'記録して登録',{kcal:c.k,protein:c.p})};
   draw();
 }
+const UNITS={serving:{l:'1食分（そのまま）',per:'',u:''},piece:{l:'1個・1本あたり',per:'1個',u:'個'},ml:{l:'mlあたり',per:'ml',u:'ml'},g:{l:'gあたり',per:'g',u:'g'}};
+const fu=f=>f.unit||'serving';
+const perText=f=>{const u=fu(f);return u==='serving'?'':(u==='piece'?'1個あたり ':f.base+UNITS[u].per+'あたり ')};
+const calcQ=(f,q)=>{const u=fu(f),r=u==='serving'?1:q/(u==='piece'?1:f.base);return{k:Math.round(f.kcal*r),p:r1(f.protein*r)}};
+const qtyName=(f,q)=>{const u=fu(f);return u==='serving'?f.name:(u==='piece'?(q===1?f.name:f.name+'×'+q+'個'):f.name+'（'+q+UNITS[u].u+'）')};
+function chooseBasis(title,next){
+  choice({step:'',title,note:'商品の栄養成分表示に書いてある「〇〇あたり」に合わせて選んでください',choices:[
+    {label:'🍱 1食分（そのまま）',sub:'食べた分の数字がそのまま書いてある',pick:()=>next('serving',1)},
+    {label:'🥚 1個・1本あたり',sub:'例：1個あたり 80kcal。あとで個数を入れます',pick:()=>next('piece',1)},
+    {label:'🥛 mlあたり',sub:'例：100mlあたり 61kcal。あとで飲んだ量を入れます',pick:()=>baseStep('ml',next)},
+    {label:'⚖️ gあたり',sub:'例：100gあたり 120kcal。あとで食べた量を入れます',pick:()=>baseStep('g',next)}]});
+}
+function baseStep(u,next){
+  keypad({step:'',title:'何'+u+'あたりの表示ですか？',note:'多くは 100'+u+'あたりです',unit:u,min:1,max:2000,initial:100,
+    presets:[100,200].map(n=>({label:n+u,pick:set=>set(n)})),done:b=>next(u,Math.round(b))});
+}
+function qtyStep(f,ts,isNew){
+  const u=fu(f),pc=u==='piece';
+  const ps=(pc?[0.5,1,2,3]:(u==='ml'?[100,200,350,500]:[50,100,150,200]));
+  if(f.lastQty&&!ps.includes(f.lastQty))ps.unshift(f.lastQty);
+  keypad({step:'',title:esc(f.name)+(pc?'：何個？':(u==='ml'?'：何ml飲んだ？':'：何g食べた？')),
+    note:perText(f)+fmt(f.kcal)+'kcal・'+f1(f.protein)+'g',unit:UNITS[u].u,decimal:pc,min:pc?0.1:1,max:pc?50:3000,
+    initial:f.lastQty||(pc?1:f.base),presets:ps.map(n=>({label:n+UNITS[u].u,pick:set=>set(n)})),okLabel:isNew?'登録して記録':'記録する',
+    preview:q=>{const c=calcQ(f,q);return '→ '+fmt(c.k)+'kcal・'+f1(c.p)+'g'},
+    done:q=>{q=pc?r1(q):Math.round(q);const c=calcQ(f,q),nm=qtyName(f,q);closeSheet();
+      commit(nm+(isNew?'を登録・記録しました':'を記録しました'),()=>{
+        if(isNew)S.foods.push(Object.assign({},f,{uses:1,lastQty:q}));
+        else{const t=S.foods.find(x=>x.id===f.id);if(t){t.uses=(t.uses||0)+1;t.lastQty=q}}
+        S.meals.push({ts,kcal:c.k,protein:c.p,name:nm})})}});
+}
 function numSteps(steps,done,okLabel,init){
   init=init||{};
-  keypad({step:steps[0],title:'カロリーは？',note:'商品の栄養成分表示を見て入力してください',unit:'kcal',min:0,max:3000,initial:init.kcal,
-    done:k=>keypad({step:steps[1],title:'タンパク質は？',note:'小数点も入力できます。わからなければ 0 でOK',unit:'g',decimal:true,min:0,max:300,initial:init.protein,okLabel,
+  keypad({step:steps[0],title:(init.lbl||'')+'カロリーは？',note:'商品の栄養成分表示を見て入力してください',unit:'kcal',min:0,max:3000,initial:init.kcal,
+    done:k=>keypad({step:steps[1],title:(init.lbl||'')+'タンパク質は？',note:'小数点も入力できます。わからなければ 0 でOK',unit:'g',decimal:true,min:0,max:300,initial:init.protein,okLabel,
       done:p=>done(Math.round(k),r1(p))})});
 }
 
@@ -585,9 +620,13 @@ function editWorkout(k){
   ]});
 }
 function editFood(f){
-  choice({step:'',title:esc(f.name),note:fmt(f.kcal)+'kcal・'+f1(f.protein)+'g',choices:[
+  const lblOf=(u,b)=>u==='serving'?'':(u==='piece'?'1個あたりの':b+u+'あたりの');
+  choice({step:'',title:esc(f.name),note:perText(f)+fmt(f.kcal)+'kcal・'+f1(f.protein)+'g',choices:[
     {label:'✏️ 数字を直す',sub:'カロリー・タンパク質（小数点OK）',pick:()=>numSteps(['1 / 2','2 / 2'],(k,p)=>{closeSheet();
-      commit(f.name+'を直しました',()=>{const x=S.foods.find(x=>x.id===f.id);if(x){x.kcal=k;x.protein=p}})},'直す',{kcal:f.kcal,protein:f.protein})},
+      commit(f.name+'を直しました',()=>{const x=S.foods.find(x=>x.id===f.id);if(x){x.kcal=k;x.protein=p}})},'直す',{kcal:f.kcal,protein:f.protein,lbl:lblOf(fu(f),f.base)})},
+    {label:'📏 表示の書き方を変える',sub:'今は「'+UNITS[fu(f)].l.replace('mlあたり',f.base+'mlあたり').replace('gあたり',f.base+'gあたり')+'」',pick:()=>chooseBasis('表示はどう書いてありますか？',(unit,base)=>
+      numSteps(['1 / 2','2 / 2'],(k,p)=>{closeSheet();commit(f.name+'を直しました',()=>{const x=S.foods.find(x=>x.id===f.id);
+        if(x){x.unit=unit;x.base=base;x.kcal=k;x.protein=p;delete x.lastQty}})},'直す',{lbl:lblOf(unit,base)}))},
     {label:'🏷 名前を変える',pick:()=>textStep({step:'',title:'新しい名前は？',note:'これまでの記録の名前はそのままです',placeholder:'',initial:f.name,
       done:n=>{closeSheet();commit('名前を変えました',()=>{const x=S.foods.find(x=>x.id===f.id);if(x)x.name=n})}})},
     {label:'🗑 削除する',danger:true,pick:()=>{closeSheet();commit(f.name+'を削除しました',()=>{S.foods=S.foods.filter(x=>x.id!==f.id)})}}
@@ -600,7 +639,7 @@ function manageFoods(){
   body.innerHTML='<p class="q">登録した食べ物</p><p class="note">押すと、数字や名前を直したり削除したりできます。これまでの記録は変わりません</p><div class="list" id="lst"></div>';
   if(!S.foods.length)$('lst').innerHTML='<p class="empty">登録はありません</p>';
   S.foods.forEach(f=>{const r=document.createElement('button');r.className='row';
-    r.innerHTML='<span class="v"><b>'+esc(f.name)+'</b><br><small>'+fmt(f.kcal)+'kcal・'+f1(f.protein)+'g</small></span><span class="go">›</span>';
+    r.innerHTML='<span class="v"><b>'+esc(f.name)+'</b><br><small>'+perText(f)+fmt(f.kcal)+'kcal・'+f1(f.protein)+'g</small></span><span class="go">›</span>';
     r.onclick=()=>editFood(f);r.style.cursor='pointer';
     $('lst').appendChild(r)});
 }
